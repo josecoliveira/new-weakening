@@ -1,0 +1,3 @@
+[submodule "libs/ontologyutils"]
+	path = libs/ontologyutils
+	url = https://bitbucket.org/troquard/ontologyutils.git
