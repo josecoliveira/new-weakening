@@ -9,37 +9,40 @@ import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.Test;
 import org.semanticweb.owlapi.model.OWLAxiom;
-import org.semanticweb.owlapi.model.OWLOntology;
 
-import www.ontologyutils.toolbox.Utils;
+import www.ontologyutils.toolbox.Ontology;
 
 class ShapleyInconsistencyScorerTest {
 
     @Test
     void scorerReturnsZeroForAxiomInConsistentOntology() {
-        OWLOntology ontology = Utils.newOntology("libs/ontologyutils/resources/a-and-b.owl");
-        Set<OWLAxiom> axioms = ontology.logicalAxioms().collect(Collectors.toSet());
-        OWLAxiom axiom = axioms.iterator().next();
+        try (Ontology ontology = Ontology.loadOntology("libs/ontologyutils/src/test/resources/el/a-and-b.owl")) {
+            Set<OWLAxiom> axioms = ontology.logicalAxioms().collect(Collectors.toSet());
+            OWLAxiom axiom = axioms.iterator().next();
 
-        ShapleyInconsistencyScorer scorer = new ShapleyInconsistencyScorer();
-        double value = scorer.shapleyInconsistencyValue(axioms, axiom);
+            ShapleyInconsistencyScorer scorer = new ShapleyInconsistencyScorer();
+            double value = scorer.shapleyInconsistencyValue(axioms, axiom);
 
-        assertEquals(0.0d, value, 0.0000001d, "Any axiom in a consistent ontology should have 0 drastic Shapley value.");
+            assertEquals(0.0d, value, 0.0000001d,
+                    "Any axiom in a consistent ontology should have 0 drastic Shapley value.");
+        }
     }
 
     @Test
     void scorerDetectsPositiveContributionInInconsistentOntology() {
-        OWLOntology ontology = Utils.newOntology("libs/ontologyutils/resources/inconsistent-leftpolicies-small.owl");
-        OWLOntology prepared = OntologyPreparationService.prepareForWeakeningRepair(ontology);
-        Set<OWLAxiom> axioms = prepared.logicalAxioms().collect(Collectors.toSet());
+        try (Ontology ontology = Ontology
+                .loadOntology("libs/ontologyutils/src/test/resources/inconsistent/leftpolicies-small.owl")) {
+            Ontology prepared = OntologyPreparationService.prepareForWeakeningRepair(ontology);
+            Set<OWLAxiom> axioms = prepared.logicalAxioms().collect(Collectors.toSet());
 
-        ShapleyInconsistencyScorer scorer = new ShapleyInconsistencyScorer();
-        double max = axioms.stream()
-                .map(ax -> scorer.shapleyInconsistencyValue(axioms, ax))
-                .max(Comparator.naturalOrder())
-                .orElse(0.0d);
+            ShapleyInconsistencyScorer scorer = new ShapleyInconsistencyScorer();
+            double max = axioms.stream()
+                    .map(ax -> scorer.shapleyInconsistencyValue(axioms, ax))
+                    .max(Comparator.naturalOrder())
+                    .orElse(0.0d);
 
-        assertTrue(max > 0.0d, "At least one axiom should contribute positively in an inconsistent ontology.");
+            assertTrue(max > 0.0d, "At least one axiom should contribute positively in an inconsistent ontology.");
+        }
     }
 }
 

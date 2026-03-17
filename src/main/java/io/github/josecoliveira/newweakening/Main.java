@@ -2,29 +2,33 @@ package io.github.josecoliveira.newweakening;
 
 import io.github.josecoliveira.newweakening.repair.OntologyPreparationService;
 import io.github.josecoliveira.newweakening.repair.ShapleyWeakeningRepair;
-import org.semanticweb.owlapi.model.OWLOntology;
-import www.ontologyutils.toolbox.Utils;
+import www.ontologyutils.toolbox.Ontology;
 
 public class Main {
     public static void main(String[] args) {
         if (args.length < 1) {
-            System.out.println("Usage: Main <ontology-file-path>");
-            System.out.println("Example: Main libs/ontologyutils/resources/inconsistent-leftpolicies-small.owl");
+            System.out.println("Usage: Main <ontology-file-path> [--verbose]");
+            System.out.println("Example: Main libs/ontologyutils/src/test/resources/inconsistent/leftpolicies-small.owl");
             return;
         }
 
         String ontologyPath = args[0];
-        OWLOntology ontology = Utils.newOntology(ontologyPath);
-        OWLOntology prepared = OntologyPreparationService.prepareForWeakeningRepair(ontology);
+        boolean verbose = args.length > 1 && "--verbose".equalsIgnoreCase(args[1]);
+        try (Ontology ontology = Ontology.loadOntology(ontologyPath)) {
+            Ontology prepared = OntologyPreparationService.prepareForWeakeningRepair(ontology);
 
-        System.out.println("Loaded ontology: " + ontologyPath);
-        System.out.println("Prepared axioms: " + prepared.getAxiomCount());
-        System.out.println("Consistent before repair: " + Utils.isConsistent(prepared));
+            System.out.println("Loaded ontology: " + ontologyPath);
+            System.out.println("Prepared axioms: " + prepared.axioms().count());
+            System.out.println("Consistent before repair: " + prepared.isConsistent());
 
-        ShapleyWeakeningRepair repair = new ShapleyWeakeningRepair(prepared, true);
-        OWLOntology repaired = repair.repair();
+            ShapleyWeakeningRepair repair = new ShapleyWeakeningRepair();
+            if (verbose) {
+                repair.setInfoCallback(System.out::println);
+            }
+            repair.repair(prepared);
 
-        System.out.println("Consistent after repair: " + Utils.isConsistent(repaired));
-        System.out.println("Repaired axioms: " + repaired.getAxiomCount());
+            System.out.println("Consistent after repair: " + prepared.isConsistent());
+            System.out.println("Repaired axioms: " + prepared.axioms().count());
+        }
     }
 }

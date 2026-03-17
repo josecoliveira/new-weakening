@@ -4,23 +4,24 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
-import org.semanticweb.owlapi.model.OWLOntology;
 
-import www.ontologyutils.toolbox.Utils;
+import www.ontologyutils.toolbox.Ontology;
 
 class ShapleyWeakeningRepairTest {
 
     @Test
     void repairMakesPreparedOntologyConsistent() {
-        OWLOntology ontology = Utils.newOntology("libs/ontologyutils/resources/inconsistent-leftpolicies-small.owl");
-        OWLOntology prepared = OntologyPreparationService.prepareForWeakeningRepair(ontology);
+        try (Ontology ontology = Ontology
+                .loadOntology("libs/ontologyutils/src/test/resources/inconsistent/leftpolicies-small.owl")) {
+            Ontology prepared = OntologyPreparationService.prepareForWeakeningRepair(ontology);
 
-        assertFalse(Utils.isConsistent(prepared), "Prepared ontology should start inconsistent for this fixture.");
+            assertFalse(prepared.isConsistent(), "Prepared ontology should start inconsistent for this fixture.");
 
-        ShapleyWeakeningRepair repair = new ShapleyWeakeningRepair(prepared);
-        OWLOntology repaired = repair.repair();
+            ShapleyWeakeningRepair repair = new ShapleyWeakeningRepair();
+            repair.repair(prepared);
 
-        assertTrue(Utils.isConsistent(repaired), "Repaired ontology should be consistent.");
+            assertTrue(prepared.isConsistent(), "Repaired ontology should be consistent.");
+        }
     }
 }
 

@@ -1,0 +1,11 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Main - leftpolicies small verbose" type="Application" factoryName="Application">
+    <option name="MAIN_CLASS_NAME" value="io.github.josecoliveira.newweakening.Main" />
+    <module name="new-weakening" />
+    <option name="PROGRAM_PARAMETERS" value="libs/ontologyutils/src/test/resources/inconsistent/leftpolicies-small.owl --verbose" />
+    <option name="VM_PARAMETERS" value="-Dfile.encoding=UTF-8 -Dsun.stdout.encoding=UTF-8 -Dsun.stderr.encoding=UTF-8 -Dsun.jnu.encoding=UTF-8" />
+    <method v="2">
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>
