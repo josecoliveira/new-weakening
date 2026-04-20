@@ -48,7 +48,7 @@
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>${exec.maven.plugin.version}</version>
                 <configuration>
-                    <mainClass>io.github.josecoliveira.newweakening.Main</mainClass>
+                    <mainClass>io.github.josecoliveira.newweakening.ShapleyRepairApp</mainClass>
                 </configuration>
             </plugin>
         </plugins>

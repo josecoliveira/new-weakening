@@ -15,25 +15,43 @@ import www.ontologyutils.repair.OntologyRepair;
 import www.ontologyutils.toolbox.MaximalConsistentSubsets;
 import www.ontologyutils.toolbox.Ontology;
 
-import io.github.josecoliveira.newweakening.repair.AlcPrinter;
-
 /**
  * Repairs an ontology by repeatedly weakening the axiom with the highest
- * Shapley inconsistency value.
+ * Shapley inconsistency value, while selecting the weakest replacement by the
+ * lowest Shapley inconsistency value.
+ *
+ * <p>
+ * Compared to {@link OntologyBestShapleyWeakening}, this variant scores both
+ * the bad-axiom candidates and the weakening candidates against the current
+ * ontology, while still deriving weakeners from a fixed reference ontology and
+ * the original ontology snapshot.
+ * </p>
  */
-public class ShapleyWeakeningRepair extends OntologyRepair {
+public class OntologyBestShapleyWeakening2 extends OntologyRepair {
 
     private final ShapleyInconsistencyScorer scorer;
+    private final int weakeningFlags;
 
-    public ShapleyWeakeningRepair() {
+    public OntologyBestShapleyWeakening2() {
+        this(ShapleyInconsistencyScorer.Mode.EXACT, 4096, 13L, AxiomWeakener.FLAG_DEFAULT);
+    }
+
+    public OntologyBestShapleyWeakening2(ShapleyInconsistencyScorer.Mode mode, int approximationSamples,
+            long approximationSeed) {
+        this(mode, approximationSamples, approximationSeed, AxiomWeakener.FLAG_DEFAULT);
+    }
+
+    public OntologyBestShapleyWeakening2(ShapleyInconsistencyScorer.Mode mode, int approximationSamples,
+            long approximationSeed, int weakeningFlags) {
         super(Ontology::isConsistent);
-        this.scorer = new ShapleyInconsistencyScorer();
+        this.scorer = new ShapleyInconsistencyScorer(mode, approximationSamples, approximationSeed);
+        this.weakeningFlags = weakeningFlags;
     }
 
     @Override
     public void repair(Ontology ontology) {
         var currentAxioms = ontology.refutableAxioms()
-                .filter(ShapleyWeakeningRepair::isSupportedRepairAxiom)
+                .filter(OntologyBestShapleyWeakening2::isSupportedRepairAxiom)
                 .collect(Collectors.toSet());
 
         var unsupported = ontology.refutableAxioms()
@@ -48,8 +66,10 @@ public class ShapleyWeakeningRepair extends OntologyRepair {
 
         var referenceAxioms = getRefAxioms(currentAxioms);
         infoMessage("Selected a reference ontology with " + referenceAxioms.size() + " axioms.");
-        try (var refOntology = Ontology.withAxioms(referenceAxioms)) {
-            var weakener = new AxiomWeakener(refOntology);
+        infoMessage(formatAxiomSet("Reference ontology:", referenceAxioms));
+
+        try (var fullOntology = ontology.cloneWithSeparateCache(); var refOntology = Ontology.withAxioms(referenceAxioms)) {
+            var weakener = new AxiomWeakener(refOntology, fullOntology, weakeningFlags);
             while (!isRepaired(ontology)) {
                 var badAxiomScores = computeBadAxiomScores(currentAxioms);
                 infoMessage("Found " + badAxiomScores.size() + " possible bad axioms.");
@@ -58,12 +78,12 @@ public class ShapleyWeakeningRepair extends OntologyRepair {
                 var badAxiom = selectBadAxiom(badAxiomScores);
                 infoMessage("Selected the bad axiom " + AlcPrinter.print(badAxiom) + ".");
 
-                var weakerAxiomScores = computeWeakeningScores(badAxiom, referenceAxioms, weakener);
-                infoMessage("Found " + weakerAxiomScores.size() + " weaker axioms.");
+                var weakerAxioms = computeWeakerAxioms(badAxiom, currentAxioms, weakener);
+                infoMessage("Found " + weakerAxioms.size() + " weaker axioms.");
                 infoMessage(formatShapleyTable(
                         "Candidate weakenings and Shapley values for " + AlcPrinter.print(badAxiom) + ":",
-                        weakerAxiomScores.entrySet().stream(), true));
-                var weakerAxiom = selectWeakening(weakerAxiomScores, badAxiom);
+                        weakerAxioms.entrySet().stream(), true));
+                var weakerAxiom = selectWeakening(weakerAxioms, badAxiom);
                 infoMessage("Selected the weaker axiom " + AlcPrinter.print(weakerAxiom) + ".");
 
                 ontology.replaceAxiom(badAxiom, weakerAxiom);
@@ -80,7 +100,7 @@ public class ShapleyWeakeningRepair extends OntologyRepair {
         return maximallyConsistentSubset(axioms);
     }
 
-    private Map<OWLAxiom, Double> computeWeakeningScores(OWLAxiom badAxiom, Set<OWLAxiom> referenceAxioms,
+    private Map<OWLAxiom, Double> computeWeakerAxioms(OWLAxiom badAxiom, Set<OWLAxiom> currentAxioms,
             AxiomWeakener weakener) {
         var weakenings = weakener.weakerAxioms(badAxiom).collect(Collectors.toSet());
         weakenings.remove(badAxiom);
@@ -89,18 +109,22 @@ public class ShapleyWeakeningRepair extends OntologyRepair {
         }
 
         return weakenings.stream()
-                .collect(Collectors.toMap(ax -> ax, ax -> scorer.shapleyInconsistencyValue(referenceAxioms, ax)));
+                .collect(Collectors.toMap(ax -> ax, ax -> scorer.shapleyInconsistencyValue(currentAxioms, ax)));
     }
 
     private OWLAxiom selectWeakening(Map<OWLAxiom, Double> weakerAxiomScores, OWLAxiom badAxiom) {
         return weakerAxiomScores.entrySet().stream()
                 .min(Comparator.<Map.Entry<OWLAxiom, Double>>comparingDouble(Map.Entry::getValue)
-                        .thenComparing((e1, e2) -> e1.getKey().compareTo(e2.getKey())))
+                        .thenComparing(Map.Entry::getKey))
                 .orElseThrow(() -> new IllegalStateException("Could not select a weakening for axiom: " + badAxiom))
                 .getKey();
     }
 
     private Map<OWLAxiom, Double> computeBadAxiomScores(Set<OWLAxiom> axioms) {
+        if (axioms.isEmpty()) {
+            throw new IllegalStateException("Could not find any axioms to weaken.");
+        }
+
         return axioms.stream()
                 .collect(Collectors.toMap(ax -> ax, ax -> scorer.shapleyInconsistencyValue(axioms, ax)));
     }
@@ -137,7 +161,7 @@ public class ShapleyWeakeningRepair extends OntologyRepair {
         Set<Set<OWLAxiom>> mcss = MaximalConsistentSubsets.maximalConsistentSubsets(axioms);
         return mcss.stream()
                 .max(Comparator.<Set<OWLAxiom>>comparingInt(Set::size)
-                        .thenComparing(ShapleyWeakeningRepair::canonicalAxiomSet, Comparator.reverseOrder()))
+                        .thenComparing(OntologyBestShapleyWeakening2::canonicalAxiomSet, Comparator.reverseOrder()))
                 .orElseGet(HashSet::new);
     }
 
@@ -149,19 +173,26 @@ public class ShapleyWeakeningRepair extends OntologyRepair {
         return axiom.isOfType(AxiomType.SUBCLASS_OF) || axiom.isOfType(AxiomType.CLASS_ASSERTION);
     }
 
-    private String printOntologyState(String title, Ontology ontology) {
+    private String formatAxiomSet(String title, Set<OWLAxiom> axioms) {
         var sb = new StringBuilder();
-        sb.append("\n").append(title).append("\n");
-        sb.append("Total axioms: ").append(ontology.axioms().count()).append("\n");
-
-        var axiomsList = ontology.axioms()
+        var printableAxioms = axioms.stream()
                 .sorted()
                 .map(AlcPrinter::print)
-                .collect(Collectors.toList());
+                .filter(rendered -> !rendered.isBlank())
+                .toList();
 
-        for (String axiom : axiomsList) {
-            sb.append("  ").append(axiom).append("\n");
-        }
+        sb.append("\n").append(title).append("\n");
+        sb.append("Total axioms: ").append(printableAxioms.size()).append("\n");
+
+        printableAxioms.forEach(axiom -> sb.append("  ").append(axiom).append("\n"));
         return sb.toString();
     }
+
+    private String printOntologyState(String title, Ontology ontology) {
+        return formatAxiomSet(title, ontology.axioms().collect(Collectors.toSet()));
+    }
 }
+
+
+
+
