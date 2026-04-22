@@ -2,7 +2,6 @@ package io.github.josecoliveira.newweakening;
 
 import io.github.josecoliveira.newweakening.repair.AlcPrinter;
 import io.github.josecoliveira.newweakening.repair.DetailedShapleyInconsistencyScorer;
-import io.github.josecoliveira.newweakening.repair.OntologyPreparationService;
 import www.ontologyutils.toolbox.Ontology;
 
 import java.util.Comparator;
@@ -38,20 +37,21 @@ public class ShapleyDetailedValueApp {
             return;
         }
 
-        try (Ontology ontology = Ontology.loadOntology(options.ontologyPath());
-                Ontology prepared = OntologyPreparationService.prepareForWeakeningRepair(ontology)) {
+        try (Ontology ontology = Ontology.loadOntology(options.ontologyPath())) {
 
-            long preparedAxiomCount = prepared.axioms().count();
-            long refutableAxiomCount = prepared.refutableAxioms().count();
+            long allAxiomCount = ontology.axioms().count();
+            long staticAxiomCount = ontology.staticAxioms().count();
+            long refutableAxiomCount = ontology.refutableAxioms().count();
 
             System.out.println("Loaded ontology: " + options.ontologyPath());
-            System.out.println("Prepared axioms (all): " + preparedAxiomCount);
-            System.out.println("Prepared axioms (refutable): " + refutableAxiomCount);
-            System.out.println("Consistent: " + prepared.isConsistent());
+            System.out.println("Axioms (all): " + allAxiomCount);
+            System.out.println("Axioms (static): " + staticAxiomCount);
+            System.out.println("Axioms (refutable): " + refutableAxiomCount);
+            System.out.println("Consistent: " + ontology.isConsistent());
             System.out.println();
 
             // Use the same repair universe: only refutable axioms.
-            List<OWLAxiom> axioms = prepared.refutableAxioms()
+            List<OWLAxiom> axioms = ontology.refutableAxioms()
                     .sorted(Comparator.comparing(Object::toString))
                     .toList();
 

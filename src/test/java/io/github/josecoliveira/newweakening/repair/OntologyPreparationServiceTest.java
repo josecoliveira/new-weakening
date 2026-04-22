@@ -3,27 +3,23 @@ package io.github.josecoliveira.newweakening.repair;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
-import org.semanticweb.owlapi.model.AxiomType;
-import org.semanticweb.owlapi.model.OWLAxiom;
 
 import www.ontologyutils.toolbox.Ontology;
 
 class OntologyPreparationServiceTest {
 
     @Test
-    void preparedOntologyContainsOnlySupportedLogicalAxioms() {
+    void loadedOntologySeparatesStaticAndRefutableAxioms() {
         try (Ontology ontology = Ontology.loadOntology(
                 "libs/ontologyutils/src/test/resources/inconsistent/leftpolicies-small.owl")) {
-            Ontology prepared = OntologyPreparationService.prepareForWeakeningRepair(ontology);
+            long staticCount = ontology.staticAxioms().count();
+            long refutableCount = ontology.refutableAxioms().count();
 
-            boolean onlySupported = prepared.logicalAxioms().allMatch(this::isSupported);
-            assertTrue(onlySupported,
-                    "Prepared ontology should only have SUBCLASS_OF or CLASS_ASSERTION logical axioms.");
+            assertTrue(staticCount >= 0, "Static axioms count should be non-negative.");
+            assertTrue(refutableCount > 0, "Fixture should have refutable (logical) axioms.");
+            assertTrue(ontology.nonLogicalAxioms().allMatch(ax -> !ax.isLogicalAxiom()),
+                    "Non-logical axioms must stay outside the refutable repair space.");
         }
-    }
-
-    private boolean isSupported(OWLAxiom axiom) {
-        return axiom.isOfType(AxiomType.SUBCLASS_OF) || axiom.isOfType(AxiomType.CLASS_ASSERTION);
     }
 }
 

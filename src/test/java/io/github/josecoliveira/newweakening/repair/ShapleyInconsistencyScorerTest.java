@@ -4,14 +4,18 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Comparator;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.Test;
 import org.semanticweb.owlapi.model.OWLAxiom;
 
 import www.ontologyutils.toolbox.Ontology;
+import www.ontologyutils.toolbox.Utils;
 
 class ShapleyInconsistencyScorerTest {
 
@@ -34,8 +38,7 @@ class ShapleyInconsistencyScorerTest {
     @Test
     void scorerDetectsPositiveContributionInInconsistentOntology() {
         try (Ontology ontology = Ontology.loadOntology(INCONSISTENT_FIXTURE)) {
-            Ontology prepared = OntologyPreparationService.prepareForWeakeningRepair(ontology);
-            Set<OWLAxiom> axioms = prepared.logicalAxioms().collect(Collectors.toSet());
+            Set<OWLAxiom> axioms = ontology.refutableAxioms().collect(Collectors.toSet());
 
             ShapleyInconsistencyScorer scorer = new ShapleyInconsistencyScorer();
             double max = axioms.stream()
@@ -50,8 +53,7 @@ class ShapleyInconsistencyScorerTest {
     @Test
     void normalizedExactShapleySumsToOneForInconsistentOntology() {
         try (Ontology ontology = Ontology.loadOntology(INCONSISTENT_FIXTURE)) {
-            Ontology prepared = OntologyPreparationService.prepareForWeakeningRepair(ontology);
-            Set<OWLAxiom> axioms = prepared.logicalAxioms().collect(Collectors.toSet());
+            Set<OWLAxiom> axioms = ontology.refutableAxioms().collect(Collectors.toSet());
 
             ShapleyInconsistencyScorer scorer = new ShapleyInconsistencyScorer();
             double total = axioms.stream()
@@ -66,8 +68,7 @@ class ShapleyInconsistencyScorerTest {
     @Test
     void approximateShapleyIsCloseToExactOnFixture() {
         try (Ontology ontology = Ontology.loadOntology(INCONSISTENT_FIXTURE)) {
-            Ontology prepared = OntologyPreparationService.prepareForWeakeningRepair(ontology);
-            Set<OWLAxiom> axioms = prepared.logicalAxioms().collect(Collectors.toSet());
+            Set<OWLAxiom> axioms = ontology.refutableAxioms().collect(Collectors.toSet());
 
             ShapleyInconsistencyScorer exactScorer = new ShapleyInconsistencyScorer();
             ShapleyInconsistencyScorer approximateScorer = new ShapleyInconsistencyScorer(
@@ -85,6 +86,74 @@ class ShapleyInconsistencyScorerTest {
                         "Approximate Shapley should remain close to exact value for each axiom.");
             }
         }
+    }
+
+    @Test
+    void optimizedExactMatchesBruteForceOracleOnFixture() {
+        try (Ontology ontology = Ontology.loadOntology(INCONSISTENT_FIXTURE)) {
+            Set<OWLAxiom> axioms = ontology.refutableAxioms().collect(Collectors.toSet());
+            ShapleyInconsistencyScorer scorer = new ShapleyInconsistencyScorer();
+
+            for (OWLAxiom axiom : axioms) {
+                double optimized = scorer.shapleyInconsistencyValue(axioms, axiom);
+                double bruteForce = bruteForceShapleyInconsistencyValue(axioms, axiom);
+                assertEquals(bruteForce, optimized, 1.0e-12,
+                        "Optimized exact computation must match brute-force Shapley value.");
+            }
+        }
+    }
+
+    private static double bruteForceShapleyInconsistencyValue(Set<OWLAxiom> axioms, OWLAxiom axiom) {
+        Set<OWLAxiom> universe = new HashSet<>(axioms);
+        universe.add(axiom);
+
+        List<OWLAxiom> baseCoalition = universe.stream()
+                .filter(candidate -> !candidate.equals(axiom))
+                .toList();
+        int n = universe.size();
+
+        final double[] total = new double[] { 0.0d };
+        forEachSubset(baseCoalition, subset -> {
+            Set<OWLAxiom> withAxiom = new HashSet<>(subset);
+            withAxiom.add(axiom);
+            int c = withAxiom.size();
+
+            double weight = factorial(c - 1) * factorial(n - c);
+            int marginal = drasticInconsistencyValue(withAxiom) - drasticInconsistencyValue(subset);
+            total[0] += weight * marginal;
+        });
+
+        return total[0] / factorial(n);
+    }
+
+    private static int drasticInconsistencyValue(Set<OWLAxiom> subset) {
+        return Utils.isConsistent(subset) ? 0 : 1;
+    }
+
+    private static double factorial(int n) {
+        double result = 1.0d;
+        for (int i = 2; i <= n; i++) {
+            result *= i;
+        }
+        return result;
+    }
+
+    private static <T> void forEachSubset(List<T> elements, Consumer<Set<T>> consumer) {
+        forEachSubset(elements, 0, new HashSet<>(), consumer);
+    }
+
+    private static <T> void forEachSubset(List<T> elements, int index, Set<T> current, Consumer<Set<T>> consumer) {
+        if (index == elements.size()) {
+            consumer.accept(new HashSet<>(current));
+            return;
+        }
+
+        T element = elements.get(index);
+        forEachSubset(elements, index + 1, current, consumer);
+
+        current.add(element);
+        forEachSubset(elements, index + 1, current, consumer);
+        current.remove(element);
     }
 }
 

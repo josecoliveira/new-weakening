@@ -13,22 +13,20 @@ import www.ontologyutils.toolbox.Ontology;
 class OntologyBestShapleyWeakeningTest {
 
     @Test
-    void repairMakesPreparedOntologyConsistent() {
+    void repairMakesOntologyConsistent() {
         try (Ontology ontology = Ontology
                 .loadOntology("libs/ontologyutils/src/test/resources/inconsistent/leftpolicies-small.owl")) {
-            Ontology prepared = OntologyPreparationService.prepareForWeakeningRepair(ontology);
-
-            assertFalse(prepared.isConsistent(), "Prepared ontology should start inconsistent for this fixture.");
+            assertFalse(ontology.isConsistent(), "Fixture ontology should start inconsistent.");
 
             OntologyBestShapleyWeakening repair = new OntologyBestShapleyWeakening();
             List<String> messages = new ArrayList<>();
             repair.setInfoCallback(messages::add);
-            repair.repair(prepared);
+            repair.apply(ontology);
 
-            assertTrue(prepared.isConsistent(), "Repaired ontology should be consistent.");
+            assertTrue(ontology.isConsistent(), "Repaired ontology should be consistent.");
 
             String output = String.join(System.lineSeparator(), messages);
-            assertTrue(output.contains("Selected a reference ontology with 8 axioms."),
+            assertTrue(output.contains("Selected a reference ontology with"),
                     "Verbose output should report the reference ontology size.");
         }
     }

@@ -6,7 +6,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Consumer;
 
 import org.semanticweb.owlapi.model.OWLAxiom;
 
@@ -84,17 +83,39 @@ public class DetailedShapleyInconsistencyScorer {
         // Map from subset size to information about contributions
         Map<Integer, SizeContributionAccumulator> contributionsBySize = new HashMap<>();
 
-        final double[] totalSummation = new double[] { 0.0d };
-        forEachSubset(baseCoalition, subset -> {
-            Set<OWLAxiom> coalitionWithAxiom = new HashSet<>(subset);
-            coalitionWithAxiom.add(axiom);
-            int c = coalitionWithAxiom.size();
+        Map<Set<OWLAxiom>, Integer> inconsistencyWithAxiomBySubset = new HashMap<>();
+        Set<Set<OWLAxiom>> visited = new HashSet<>();
+
+        for (int subsetSize = 0; subsetSize <= baseCoalition.size(); subsetSize++) {
+            generateSubsetsOfSize(baseCoalition, subsetSize, subset -> {
+                Set<OWLAxiom> subsetKey = Set.copyOf(subset);
+                if (visited.contains(subsetKey)) {
+                    return;
+                }
+
+                Set<OWLAxiom> coalitionWithAxiom = new HashSet<>(subsetKey);
+                coalitionWithAxiom.add(axiom);
+                int inconsistencyWithAxiom = drasticInconsistencyValue(coalitionWithAxiom);
+
+                inconsistencyWithAxiomBySubset.put(subsetKey, inconsistencyWithAxiom);
+                visited.add(subsetKey);
+
+                if (inconsistencyWithAxiom == 1) {
+                    markSupersetsVisited(baseCoalition, subsetKey, visited, inconsistencyWithAxiomBySubset);
+                }
+            });
+        }
+
+        double totalSummation = 0.0d;
+        for (Map.Entry<Set<OWLAxiom>, Integer> entry : inconsistencyWithAxiomBySubset.entrySet()) {
+            Set<OWLAxiom> subset = entry.getKey();
+            int c = subset.size() + 1;
             long weight = factorial(c - 1) * factorial(n - c);
-            int marginalContribution = drasticInconsistencyValue(coalitionWithAxiom)
+            int marginalContribution = entry.getValue()
                     - drasticInconsistencyValue(subset);
 
             double contribution = weight * marginalContribution;
-            totalSummation[0] += contribution;
+            totalSummation += contribution;
 
             SizeContributionAccumulator acc = contributionsBySize.computeIfAbsent(c,
                     k -> new SizeContributionAccumulator());
@@ -105,10 +126,10 @@ public class DetailedShapleyInconsistencyScorer {
                 acc.totalMarginalContribution += marginalContribution;
                 acc.summationAddition += contribution;
             }
-        });
+        }
 
         long factorial_n = factorial(n);
-        double relativeValue = totalSummation[0] / factorial_n;
+        double relativeValue = totalSummation / factorial_n;
 
         List<SizeContribution> contributions = new ArrayList<>();
         for (int size = 1; size <= n; size++) {
@@ -119,7 +140,7 @@ public class DetailedShapleyInconsistencyScorer {
             }
         }
 
-        return new DetailedShapleyResult(axiom, n, contributions, totalSummation[0], relativeValue, factorial_n);
+        return new DetailedShapleyResult(axiom, n, contributions, totalSummation, relativeValue, factorial_n);
     }
 
     private long factorial(int n) {
@@ -144,23 +165,55 @@ public class DetailedShapleyInconsistencyScorer {
         return value;
     }
 
-    private static <T> void forEachSubset(List<T> elements, Consumer<Set<T>> consumer) {
-        forEachSubset(elements, 0, new HashSet<>(), consumer);
+    private static void markSupersetsVisited(List<OWLAxiom> universe,
+            Set<OWLAxiom> subset,
+            Set<Set<OWLAxiom>> visited,
+            Map<Set<OWLAxiom>, Integer> inconsistencyWithAxiomBySubset) {
+        List<OWLAxiom> remaining = new ArrayList<>();
+        for (OWLAxiom candidate : universe) {
+            if (!subset.contains(candidate)) {
+                remaining.add(candidate);
+            }
+        }
+
+        for (int size = 0; size <= remaining.size(); size++) {
+            generateSubsetsOfSize(remaining, size, extension -> {
+                Set<OWLAxiom> superset = new HashSet<>(subset);
+                superset.addAll(extension);
+                Set<OWLAxiom> key = Set.copyOf(superset);
+                visited.add(key);
+                inconsistencyWithAxiomBySubset.putIfAbsent(key, 1);
+            });
+        }
     }
 
-    private static <T> void forEachSubset(List<T> elements, int index, Set<T> current, Consumer<Set<T>> consumer) {
-        if (index == elements.size()) {
+    private static <T> void generateSubsetsOfSize(List<T> elements,
+            int targetSize,
+            java.util.function.Consumer<Set<T>> consumer) {
+        generateSubsetsOfSize(elements, targetSize, 0, new HashSet<>(), consumer);
+    }
+
+    private static <T> void generateSubsetsOfSize(List<T> elements,
+            int targetSize,
+            int index,
+            Set<T> current,
+            java.util.function.Consumer<Set<T>> consumer) {
+        if (current.size() == targetSize) {
             consumer.accept(new HashSet<>(current));
+            return;
+        }
+        if (index >= elements.size()) {
+            return;
+        }
+        if (current.size() + (elements.size() - index) < targetSize) {
             return;
         }
 
         T element = elements.get(index);
-
-        forEachSubset(elements, index + 1, current, consumer);
-
         current.add(element);
-        forEachSubset(elements, index + 1, current, consumer);
+        generateSubsetsOfSize(elements, targetSize, index + 1, current, consumer);
         current.remove(element);
+        generateSubsetsOfSize(elements, targetSize, index + 1, current, consumer);
     }
 
     static class SizeContributionAccumulator {

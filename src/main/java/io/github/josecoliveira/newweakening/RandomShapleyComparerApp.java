@@ -2,7 +2,8 @@ package io.github.josecoliveira.newweakening;
 
 import io.github.josecoliveira.newweakening.repair.AlcPrinter;
 import io.github.josecoliveira.newweakening.repair.OntologyBestShapleyWeakening;
-import io.github.josecoliveira.newweakening.repair.OntologyPreparationService;
+import www.ontologyutils.normalization.SroiqNormalization;
+import www.ontologyutils.refinement.AxiomWeakener;
 import www.ontologyutils.repair.OntologyRepairWeakening;
 import www.ontologyutils.toolbox.Ontology;
 
@@ -28,19 +29,37 @@ public class RandomShapleyComparerApp {
 		}
 
 		try (Ontology ontology = Ontology.loadOntology(options.ontologyPath());
-				Ontology prepared = OntologyPreparationService.prepareForWeakeningRepair(ontology);
-				Ontology shapleyInput = prepared.cloneWithSeparateCache();
-				Ontology randomInput = prepared.cloneWithSeparateCache()) {
+				Ontology shapleyInput = ontology.cloneWithSeparateCache();
+				Ontology randomInput = ontology.cloneWithSeparateCache()) {
+
+			if (requiresSroiqNormalization(options.weakeningFlags())) {
+				new SroiqNormalization(true, false).apply(shapleyInput);
+				new SroiqNormalization(true, false).apply(randomInput);
+			}
 
 			System.out.println("Loaded ontology: " + options.ontologyPath());
-			System.out.println("Prepared axioms: " + prepared.axioms().count());
-			System.out.println("Consistent before repair: " + prepared.isConsistent());
+			System.out.println("Axioms (all): " + shapleyInput.axioms().count());
+			System.out.println("Axioms (refutable): " + shapleyInput.refutableAxioms().count());
+			if (requiresSroiqNormalization(options.weakeningFlags())) {
+				System.out.println("Normalization: SROIQ applied before comparison");
+			}
+			System.out.println("Consistent before repair: " + shapleyInput.isConsistent());
 
 			var shapleyRepair = new OntologyBestShapleyWeakening(
+					options.coherence() ? Ontology::isCoherent : Ontology::isConsistent,
 					options.mode(),
 					options.approximationSamples(),
-					options.approximationSeed());
-			var randomRepair = new OntologyRepairWeakening(Ontology::isConsistent);
+					options.approximationSeed(),
+					options.refOntologyStrategy(),
+					options.badAxiomStrategy(),
+					options.weakeningFlags(),
+					options.enhanceRef());
+			var randomRepair = new OntologyRepairWeakening(
+					options.coherence() ? Ontology::isCoherent : Ontology::isConsistent,
+					options.refOntologyStrategy(),
+					options.badAxiomStrategy(),
+					options.weakeningFlags(),
+					options.enhanceRef());
 
 			if (options.verbose()) {
 				shapleyRepair.setInfoCallback(message -> System.out.println("[shapley] " + message));
@@ -48,11 +67,11 @@ public class RandomShapleyComparerApp {
 			}
 
 			long shapleyStart = System.nanoTime();
-			shapleyRepair.repair(shapleyInput);
+			shapleyRepair.apply(shapleyInput);
 			long shapleyDurationMs = (System.nanoTime() - shapleyStart) / 1_000_000;
 
 			long randomStart = System.nanoTime();
-			randomRepair.repair(randomInput);
+			randomRepair.apply(randomInput);
 			long randomDurationMs = (System.nanoTime() - randomStart) / 1_000_000;
 
 			double shapleyVsRandomIic = shapleyInput.iicWithRespectTo(randomInput);
@@ -94,6 +113,13 @@ public class RandomShapleyComparerApp {
 		sb.append("Total axioms: ").append(axioms.size()).append(System.lineSeparator());
 		axioms.forEach(ax -> sb.append("  ").append(ax).append(System.lineSeparator()));
 		return sb.toString();
+	}
+
+	private static boolean requiresSroiqNormalization(int weakeningFlags) {
+		int normalizationSensitiveFlags = AxiomWeakener.FLAG_SROIQ_STRICT
+				| AxiomWeakener.FLAG_NNF_STRICT
+				| AxiomWeakener.FLAG_ALC_STRICT;
+		return (weakeningFlags & normalizationSensitiveFlags) != 0;
 	}
 }
 
