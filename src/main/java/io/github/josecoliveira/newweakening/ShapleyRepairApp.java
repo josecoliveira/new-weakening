@@ -1,10 +1,12 @@
 package io.github.josecoliveira.newweakening;
 
 import io.github.josecoliveira.newweakening.repair.OntologyBestShapleyWeakening;
+import io.github.josecoliveira.newweakening.repair.OntologyInteractiveShapleyWeakening;
 import io.github.josecoliveira.newweakening.repair.ShapleyInconsistencyScorer;
 import www.ontologyutils.normalization.SroiqNormalization;
 import www.ontologyutils.refinement.AxiomWeakener;
 import www.ontologyutils.repair.OntologyRepairRemoval.BadAxiomStrategy;
+import www.ontologyutils.repair.OntologyRepairWeakening;
 import www.ontologyutils.repair.OntologyRepairWeakening.RefOntologyStrategy;
 import www.ontologyutils.toolbox.Ontology;
 
@@ -45,20 +47,36 @@ public class ShapleyRepairApp {
             }
             System.out.println("Consistent before repair: " + working.isConsistent());
 
-            OntologyBestShapleyWeakening repair = new OntologyBestShapleyWeakening(
-                    options.coherence() ? Ontology::isCoherent : Ontology::isConsistent,
-                    options.mode(),
-                    options.approximationSamples(),
-                    options.approximationSeed(),
-                    options.refOntologyStrategy(),
-                    options.badAxiomStrategy(),
-                    options.weakeningFlags(),
-                    options.enhanceRef());
-            if (options.verbose()) {
+            OntologyRepairWeakening repair;
+            if (options.interactive()) {
+                repair = new OntologyInteractiveShapleyWeakening(
+                        options.coherence() ? Ontology::isCoherent : Ontology::isConsistent,
+                        options.mode(),
+                        options.approximationSamples(),
+                        options.approximationSeed(),
+                        options.refOntologyStrategy(),
+                        options.badAxiomStrategy(),
+                        options.weakeningFlags(),
+                        options.enhanceRef());
+            } else {
+                repair = new OntologyBestShapleyWeakening(
+                        options.coherence() ? Ontology::isCoherent : Ontology::isConsistent,
+                        options.mode(),
+                        options.approximationSamples(),
+                        options.approximationSeed(),
+                        options.refOntologyStrategy(),
+                        options.badAxiomStrategy(),
+                        options.weakeningFlags(),
+                        options.enhanceRef());
+            }
+            if (options.verbose() || options.interactive()) {
                 System.out.println("Shapley mode: " + options.mode().name().toLowerCase());
                 if (options.mode() == ShapleyInconsistencyScorer.Mode.APPROXIMATE) {
                     System.out.println("Approximation samples: " + options.approximationSamples());
                     System.out.println("Approximation seed: " + options.approximationSeed());
+                }
+                if (options.interactive()) {
+                    System.out.println("Interactive mode: enabled");
                 }
                 repair.setInfoCallback(System.out::println);
             }
@@ -77,12 +95,13 @@ public class ShapleyRepairApp {
                         + " [--bad-axiom one-mus|some-mus|most-mus|least-mcs|largest-mcs|one-mcs|some-mcs|random]"
                         + " [--strict-nnf] [--strict-alc] [--strict-sroiq] [--strict-simple-roles]"
                         + " [--uncached] [--basic-cache] [--strict-owl2] [--simple-ria-weakening]"
-                        + " [--no-role-refinement] [--enhance-ref] [--verbose]");
+                        + " [--no-role-refinement] [--enhance-ref] [--interactive] [--verbose]");
     }
 
     static CliOptions parseCliOptions(String[] args) {
         String ontologyPath = args[0];
         boolean verbose = false;
+        boolean interactive = false;
         boolean coherence = false;
         boolean enhanceRef = false;
         ShapleyInconsistencyScorer.Mode mode = ShapleyInconsistencyScorer.Mode.EXACT;
@@ -96,6 +115,8 @@ public class ShapleyRepairApp {
             String arg = args[i];
             if ("--verbose".equalsIgnoreCase(arg)) {
                 verbose = true;
+            } else if ("--interactive".equalsIgnoreCase(arg)) {
+                interactive = true;
             } else if ("--coherence".equalsIgnoreCase(arg)) {
                 coherence = true;
             } else if ("--fast".equalsIgnoreCase(arg)) {
@@ -162,7 +183,7 @@ public class ShapleyRepairApp {
             }
         }
 
-        return new CliOptions(ontologyPath, verbose, coherence, enhanceRef, mode, approximationSamples,
+        return new CliOptions(ontologyPath, verbose, interactive, coherence, enhanceRef, mode, approximationSamples,
                 approximationSeed, refOntologyStrategy, badAxiomStrategy, weakeningFlags);
     }
 
@@ -245,6 +266,7 @@ public class ShapleyRepairApp {
     record CliOptions(
             String ontologyPath,
             boolean verbose,
+            boolean interactive,
             boolean coherence,
             boolean enhanceRef,
             ShapleyInconsistencyScorer.Mode mode,

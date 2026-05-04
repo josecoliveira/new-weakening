@@ -47,9 +47,14 @@
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>exec-maven-plugin</artifactId>
                 <version>${exec.maven.plugin.version}</version>
-                <configuration>
-                    <mainClass>io.github.josecoliveira.newweakening.ShapleyRepairApp</mainClass>
-                </configuration>
+                <executions>
+                    <execution>
+                        <id>shapley-repair</id>
+                        <configuration>
+                            <mainClass>io.github.josecoliveira.newweakening.ShapleyRepairApp</mainClass>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

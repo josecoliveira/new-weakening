@@ -42,10 +42,18 @@ class ShapleyRepairAppCliOptionsTest {
     void defaultsToTroquard2018PresetConfiguration() {
         var options = ShapleyRepairApp.parseCliOptions(new String[] { "path.owl" });
 
+        assertTrue(!options.interactive());
         assertEquals(RefOntologyStrategy.ONE_MCS, options.refOntologyStrategy());
         assertEquals(BadAxiomStrategy.IN_SOME_MUS, options.badAxiomStrategy());
         assertEquals(io.github.josecoliveira.newweakening.repair.OntologyBestShapleyWeakening.TROQUARD2018_FLAGS,
                 options.weakeningFlags());
+    }
+
+    @Test
+    void parsesInteractiveFlag() {
+        var options = ShapleyRepairApp.parseCliOptions(new String[] { "path.owl", "--interactive" });
+
+        assertTrue(options.interactive());
     }
 }
 
